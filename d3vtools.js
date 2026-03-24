@@ -598,24 +598,26 @@ const UI_HTML = `<!doctype html>
       $("#resourceCount").textContent = (d.entries || []).length + " collected";
     }
 
-    function treeRows(entries) {
-      return (entries || []).map((e) => {
-        const type = detectType(e);
-        const active = e.id === state.selectedId;
-        return `
-          <div class="tree-item" data-id="${esc(e.id)}" style="${active ? "outline:1px solid rgba(123,163,255,.5)" : ""}">
-            <div class="tree-left">
-              <div class="path">${esc(e.path || e.url)}</div>
-              <div class="small">${esc(e.method || "GET")} · ${esc(type)} · ${esc(String(e.status || ""))} · ${esc(String(e.size || 0))} bytes</div>
-            </div>
-            <div class="resource-btns">
-              <span class="pill">${esc(e.kind || "resource")}</span>
-              <button type="button" class="secondary copy-one" data-copy="${esc(e.id)}">Copy</button>
-            </div>
-          </div>
-        `;
-      }).join("");
-    }
+function treeRows(entries) {
+  return (entries || []).map((e) => {
+    const type = detectType(e);
+    const active = e.id === state.selectedId;
+    const outlineStyle = active ? 'outline:1px solid rgba(123,163,255,.5)' : '';
+
+    return `
+      <div class="tree-item" data-id="${esc(e.id)}" ${outlineStyle ? `style="${outlineStyle}"` : ""}>
+        <div class="tree-left">
+          <div class="path">${esc(e.path || e.url)}</div>
+          <div class="small">${esc(e.method || "GET")} · ${esc(type)} · ${esc(String(e.status || ""))} · ${esc(String(e.size || 0))} bytes</div>
+        </div>
+        <div class="resource-btns">
+          <span class="pill">${esc(e.kind || "resource")}</span>
+          <button type="button" class="secondary copy-one" data-copy="${esc(e.id)}">Copy</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
 
     function renderTree() {
       const d = state.data;
