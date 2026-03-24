@@ -499,7 +499,7 @@ const UI_HTML = `<!doctype html>
           continue;
         }
 
-        if (c === '"' || c === "'" || c === "`")
+        if (c === '"' || c === "'" || c === "`") {
           inStr = true;
           strQ = c;
           out += c;
