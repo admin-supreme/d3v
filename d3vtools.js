@@ -1217,7 +1217,7 @@ function extractFromHtml(html, baseUrl, rootOrigin) {
     }
   }
 
-  const inlineStyles = [...htmlText.matchAll(/<style\\b[^>]*>([\\s\\S]*?)<\\/style>/gi)].map(m => m[1] || "");
+  const inlineStyles = [...htmlText.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map(m => m[1] || "");
   for (const css of inlineStyles) {
     const extracted = extractFromCss(css, baseUrl, rootOrigin);
     out.assets.push(...extracted.assets);
