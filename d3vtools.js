@@ -667,3 +667,8 @@ function formatCss(source) {
     .replace(/[ \t]+\n/g, "\n")
     .trim();
 }
+function formatJs(source) {
+  const s = String(source || "");
+  if (!s.trim()) return "";
+  return s.trim();
+}
