@@ -698,7 +698,8 @@ function treeRows(entries) {
   });
 
     function escRegex(s) {
-      return String(s).replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&");}
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
     function snippet(text, term) {
       const idx = text.toLowerCase().indexOf(term.toLowerCase());
