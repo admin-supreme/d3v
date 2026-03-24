@@ -606,10 +606,11 @@ const UI_HTML = `<!doctype html>
       }
 
       if (c === "`") {
-        state = "code";
-        i++;
-        continue;
-      }
+    // Check if it's a code block toggle, don't just force state
+    state = (state === "code") ? "text" : "code";                
+    // i++; // Often safer to let the main loop increment i
+    continue;
+}
 
       // Handle ${...} safely by switching back to code-like parsing.
       if (c === "$" && n === "{") {
