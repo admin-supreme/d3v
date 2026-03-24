@@ -1367,7 +1367,7 @@ function formatHtml(source) {
       if (t) out.push("  ".repeat(Math.max(0, indent)) + t);
       continue;
     }
-    const tag = token.match(/^<\\/?\\s*([a-zA-Z0-9:-]+)/);
+    const tag = token.match(/^<\/?\s*([a-zA-Z0-9:-]+)/);
     const name = tag ? tag[1].toLowerCase() : "";
     const closing = /^<\\//.test(token);
     const selfClose = /\\/>$/.test(token) || /^(?:<\\!|<\\?)/.test(token) || ["meta","link","br","hr","img","input","source","area","col","embed","param","track","wbr"].includes(name);
