@@ -1278,7 +1278,7 @@ function canonicalizeSameOrigin(raw, baseUrl, rootOrigin) {
 }
 
 function looksLikeHtmlPage(url) {
-  return /\\/$|\\.html?(\\?|#|$)|\\.php(\\?|#|$)|\\.aspx?(\\?|#|$)|\\.jsp(\\?|#|$)|\\?/.test(url);
+  return /\/$|\.html?(?:\?|#|$)|\.php(?:\?|#|$)|\.aspx?(?:\?|#|$)|\.jsp(?:\?|#|$)|\?/.test(url);
 }
 
 function stripCssQuotes(s) {
