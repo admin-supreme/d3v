@@ -605,7 +605,6 @@ const UI_HTML = `<!doctype html>
         continue;
       }
 
-      // Handle ${...} safely by switching back to code-like parsing.
       if (c === "$" && n === "{") {
         out += "{";
         i += 2;
@@ -619,8 +618,7 @@ const UI_HTML = `<!doctype html>
       continue;
     }
 
-    // --- CODE / TEMPLATE EXPRESSION STATES ---
-    const inExpr = state === "templateExpr";
+      const inExpr = state === "templateExpr";
 
     if (c === "\r") {
       i++;
@@ -634,14 +632,12 @@ const UI_HTML = `<!doctype html>
     }
 
     if (c === " " || c === "\t" || c === "\f") {
-      // Keep interior spacing, but never preserve leading indentation whitespace.
-      if (!lineStart) out += c;
+    if (!lineStart) out += c;
       i++;
       continue;
     }
 
-    // Line comment
-    if (c === "/" && n === "/") {
+ if (c === "/" && n === "/") {
       writeIndentIfNeeded();
       out += "//";
       i += 2;
@@ -649,7 +645,6 @@ const UI_HTML = `<!doctype html>
       continue;
     }
 
-    // Block comment
     if (c === "/" && n === "*") {
       writeIndentIfNeeded();
       out += "/*";
@@ -658,7 +653,6 @@ const UI_HTML = `<!doctype html>
       continue;
     }
 
-    // String literals
     if (c === '"' || c === "'" ) {
       writeIndentIfNeeded();
       quote = c;
@@ -670,7 +664,6 @@ const UI_HTML = `<!doctype html>
       continue;
     }
 
-    // Template literals
     if (c === "`") {
       writeIndentIfNeeded();
       escape = false;
@@ -681,7 +674,6 @@ const UI_HTML = `<!doctype html>
       continue;
     }
 
-    // Regex literal (heuristic)
     if (c === "/" && canStartRegex()) {
       writeIndentIfNeeded();
       state = "regex";
@@ -693,7 +685,6 @@ const UI_HTML = `<!doctype html>
       continue;
     }
 
-    // Identifier / keyword
     if (/[A-Za-z_$]/.test(c)) {
       writeIndentIfNeeded();
       const word = readWord(i);
@@ -704,7 +695,6 @@ const UI_HTML = `<!doctype html>
       continue;
     }
 
-    // Opening brace
     if (c === "{") {
       writeIndentIfNeeded();
       if (!out.endsWith("\n") && out.length && !/\s$/.test(out)) {
@@ -719,11 +709,8 @@ const UI_HTML = `<!doctype html>
       continue;
     }
 
-    // Closing brace
     if (c === "}") {
       if (inExpr) {
-        // In template expression: a top-level } closes ${...}
-        // Nested braces inside the expression are still formatted normally.
         if (indent > 0) indent--;
         trimRight();
 
