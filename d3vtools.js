@@ -29,10 +29,10 @@ const UI_HTML = `<!doctype html>
         <input id="url" type="url" placeholder="https://example.com" autocomplete="off" spellcheck="false" />
         <input id="term" type="text" placeholder="Search across collected source" autocomplete="off" spellcheck="false" />
         <select id="depth">
-          <option value="1" selected>𝐄𝐱𝐭𝐫𝐚𝐜𝐭𝐢𝐨𝐧 𝐋𝐯𝐋Ⅰ:</option>
+          <option value="1" selected>𝐄𝐱𝐭𝐫𝐚𝐜𝐭𝐢𝐨𝐧 𝐋𝐯𝐋:Ⅰ</option>
           <option value="2">𝐄𝐱𝐭𝐫𝐚𝐜𝐭𝐢𝐨𝐧 𝐋𝐯𝐋:Ⅱ</option>
           <option value="3">𝐄𝐱𝐭𝐫𝐚𝐜𝐭𝐢𝐨𝐧 𝐋𝐯𝐋:Ⅲ</option>
-          <option value="4">𝐄𝐱𝐭𝐫𝐚𝐜𝐭𝐢𝐨𝐧 𝐋𝐯𝐋:Ⅳ/option>
+          <option value="4">𝐄𝐱𝐭𝐫𝐚𝐜𝐭𝐢𝐨𝐧 𝐋𝐯𝐋:Ⅳ</option>
         </select>
         <button type="submit">𝐒𝐭𝐚𝐫𝐭 𝐄𝐧𝐠𝐢𝐧𝐞</button>
         <button type="button" class="secondary" id="reset">𝐑𝐞𝐬𝐞𝐭</button>
