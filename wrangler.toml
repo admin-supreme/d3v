@@ -1,4 +1,4 @@
-name = "source-inspector"
+name = "d3v"
 main = "d3vtools.js"
 compatibility_date = "2026-03-24"
 
