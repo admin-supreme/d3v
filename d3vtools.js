@@ -16,26 +16,26 @@ const UI_HTML = `<!doctype html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Site Structure Inspector</title>
+  <title>𝑾𝒆𝒃 𝑨𝒏𝒂𝒍𝒚𝒔𝒊𝒔 𝑷𝒓𝒐𝒕𝒐𝒄𝒐𝒍</title>
 <link rel="stylesheet" href="/appmain.css">
 </head>
 <body>
   <div class="wrap">
     <div class="hero">
-      <h1>Site Structure Inspector</h1>
-      <p class="sub">Paste a URL. The worker crawls the same site, collects linked HTML/CSS/JS and text assets, formats them for reading, and lets you copy the exact source.</p>
+      <h1>Site 𝑾𝒆𝒃 𝑨𝒏𝒂𝒍𝒚𝒔𝒊𝒔 𝑷𝒓𝒐𝒕𝒐𝒄𝒐𝒍 </h1>
+      <p class="sub">𝚃𝚑𝚒𝚜 𝚒𝚜 𝚊𝚗 𝙰𝙿𝙸 𝚋𝚊𝚜𝚎𝚍 𝙰𝚗𝚊𝚕𝚢𝚝𝚒𝚌𝚊𝚕 𝙴𝚗𝚐𝚒𝚗𝚎 𝙳𝚎𝚜𝚒𝚐𝚗𝚎𝚍 𝚋𝚢 [𝙳𝚎𝚐𝚛𝚎𝚎𝚕𝚎𝚜𝚜 𝙴𝚗𝚐𝚒𝚗𝚎𝚎𝚛 𝑳.𝑨𝒓𝒂𝒔𝒉𝒊 𝙻𝚘𝙻..]𝚝𝚘 𝚎𝚡𝚝𝚛𝚊𝚌𝚝 𝚖𝚘𝚜𝚝 𝚊𝚌𝚌𝚞𝚛𝚊𝚝𝚎 𝚍𝚊𝚝𝚊 𝚜𝚝𝚛𝚞𝚌𝚝𝚞𝚛𝚎 𝚏𝚛𝚘𝚖 𝚊𝚗𝚢 𝙷𝚃𝚃𝙿/𝙷𝚃𝚃𝙿𝚂 𝚜𝚒𝚝𝚎. 𝙱𝚎𝚜𝚝 𝚊𝚕𝚝𝚎𝚛𝚗𝚊𝚝𝚒𝚟𝚎 𝚘𝚏 𝙳𝚎𝚟𝚃𝚘𝚘𝚕𝚜. </p>
 
       <form id="form" class="toolbar">
-        <input id="url" type="url" placeholder="https://example.com" autocomplete="off" spellcheck="false" />
+        <input id="url" type="url" placeholder="ℎ𝑡𝑡𝑝𝑠://𝑒𝑥𝑎𝑚𝑝𝑙𝑒.𝑐𝑜𝑚" autocomplete="off" spellcheck="false" />
         <input id="term" type="text" placeholder="Search across collected source" autocomplete="off" spellcheck="false" />
         <select id="depth">
-          <option value="1">Depth 1</option>
-          <option value="2" selected>Depth 2</option>
-          <option value="3">Depth 3</option>
-          <option value="4">Depth 4</option>
+          <option value="1">𝐄𝐱𝐭𝐫𝐚𝐜𝐭𝐢𝐨𝐧 𝐋𝐯𝐋:Ⅰ</option>
+          <option value="2" selected>𝐄𝐱𝐭𝐫𝐚𝐜𝐭𝐢𝐨𝐧 𝐋𝐯𝐋:Ⅱ</option>
+          <option value="3">𝐄𝐱𝐭𝐫𝐚𝐜𝐭𝐢𝐨𝐧 𝐋𝐯𝐋:Ⅲ</option>
+          <option value="4">𝐄𝐱𝐭𝐫𝐚𝐜𝐭𝐢𝐨𝐧 𝐋𝐯𝐋:Ⅳ</option>
         </select>
-        <button type="submit">Inspect</button>
-        <button type="button" class="secondary" id="reset">Reset</button>
+        <button type="submit">𝗦𝘁𝗮𝗿𝘁 𝗘𝗻𝗴𝗶𝗻𝗲</button>
+        <button type="button" class="secondary" id="reset">𝗥𝗲𝘀𝗲𝘁</button>
       </form>
 
       <div class="meta" id="meta"></div>
