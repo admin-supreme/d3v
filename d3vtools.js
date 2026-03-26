@@ -1139,14 +1139,6 @@ function siteLabelFromUrl(rootUrl) {
     return String(rootUrl || "Site");
   }
 }
-function siteLabelFromUrl(rootUrl) {
-  try {
-    const u = new URL(rootUrl);
-    return u.host || u.hostname || u.origin || "Site";
-  } catch {
-    return String(rootUrl || "Site");
-  }
-}
 function formatHtml(source) {
   const s = String(source || "");
   if (!s.trim()) return "";
