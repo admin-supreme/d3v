@@ -1189,10 +1189,7 @@ function treeNodeToObject(n) {
     entry: n.entry ? { id: n.entry.id, url: n.entry.url, path: n.entry.path, kind: n.entry.kind } : null,
     children: n.children ? Object.fromEntries(Object.entries(n.children).map(([k, v]) => [k, treeNodeToObject(v)])) : {},
   };
-}
-function isRenderableTreeEntry(entry) {
-  return !!entry && (entry.kind === "html" || entry.kind === "css" || entry.kind === "js");
-}
+    }
 function renderTerminalTree(entries, rootUrl) {
   const siteLabel = siteLabelFromUrl(rootUrl);
   const rootId = stableId(rootUrl);
