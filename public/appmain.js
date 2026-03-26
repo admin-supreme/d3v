@@ -383,7 +383,7 @@ async function refreshSource(reason = "") {
     renderBundles();
     renderViewer();
     renderSearch();
-    setIframeUrl(data.rootUrl || data.viewerUrl || "", data.frameHtml || "");
+    setIframeUrl(data.viewerUrl || data.rootUrl || "", data.frameHtml || "");
     setStatus("Loaded", "good");
   } catch (err) {
     setStatus("Refresh failed", "bad");
@@ -479,7 +479,7 @@ async function loadTarget(url) {
     state.liveDom = "";
     renderMeta(data);
     renderAll();
-    setIframeUrl(data.rootUrl || data.viewerUrl || "", data.frameHtml || "");
+    setIframeUrl(data.viewerUrl || data.rootUrl || "", data.frameHtml || "");
     setStatus("Loaded", "good");
   } catch (err) {
     setStatus("Failed", "bad");
@@ -549,7 +549,7 @@ function init() {
     const href = resolveCurrentOriginalUrl();
     if (href) setLiveUrl(href);
   });
-  window.addEventListener("resize", fitTerminalTree);ok 
+  window.addEventListener("resize", fitTerminalTree);
   window.addEventListener("message", onIframeMessage);
   makeInitialTabs();
   renderAll();
