@@ -1,7 +1,7 @@
 const CONFIG = {
   MAX_PAGES: 40,
   MAX_ASSETS: 180,
-  MAX_DEPTH: 4,
+  MAX_DEPTH: 10,
   MAX_TEXT_PER_FILE: 250000,
   MAX_HTML: 350000,
   MAX_CSS: 250000,
@@ -36,6 +36,12 @@ const UI_HTML = `<!doctype html>
           <option value="2">𝐄𝐱𝐭𝐫𝐚𝐜𝐭𝐢𝐨𝐧 𝐋𝐯𝐋:Ⅱ</option>
           <option value="3">𝐄𝐱𝐭𝐫𝐚𝐜𝐭𝐢𝐨𝐧 𝐋𝐯𝐋:Ⅲ</option>
           <option value="4">𝐄𝐱𝐭𝐫𝐚𝐜𝐭𝐢𝐨𝐧 𝐋𝐯𝐋:Ⅳ</option>
+          <option value="5">𝐄𝐱𝐭𝐫𝐚𝐜𝐭𝐢𝐨𝐧 𝐋𝐯𝐋:Ⅴ</option>
+          <option value="6">𝐄𝐱𝐭𝐫𝐚𝐜𝐭𝐢𝐨𝐧 𝐋𝐯𝐋:Ⅵ</option>
+          <option value="7">𝐄𝐱𝐭𝐫𝐚𝐜𝐭𝐢𝐨𝐧 𝐋𝐯𝐋:Ⅶ</option>
+          <option value="8">𝐄𝐱𝐭𝐫𝐚𝐜𝐭𝐢𝐨𝐧 𝐋𝐯𝐋:Ⅷ</option>
+          <option value="9">𝐄𝐱𝐭𝐫𝐚𝐜𝐭𝐢𝐨𝐧 𝐋𝐯𝐋:Ⅸ</option>
+          <option value="10">𝐄𝐱𝐭𝐫𝐚𝐜𝐭𝐢𝐨𝐧 𝐋𝐯𝐋:Ⅹ</option>
         </select>
         <button type="submit">𝐒𝐭𝐚𝐫𝐭 𝐄𝐧𝐠𝐢𝐧𝐞</button>
         <button type="button" class="secondary" id="reset">𝐑𝐞𝐬𝐞𝐭</button>
@@ -169,14 +175,7 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 function isRenderableTreeEntry(entry) {
-  if (!entry) return false;
-  if (entry.inline) {
-    return entry.kind === "css" || entry.kind === "js";
-  }
-  if (entry.discoveredFrom !== "html") {
-    return false;
-  }
-  return entry.kind === "html" || entry.kind === "css" || entry.kind === "js";
+  return !!entry && (entry.inline || ["html", "css", "js", "text", "asset"].includes(String(entry.kind || "").toLowerCase()));
 }
 function normalizeTreePath(path) {
   let p = String(path || "").trim().replace(/\\/g, "/");
@@ -191,7 +190,7 @@ async function handleAnalyze(request) {
   try {
     const url = new URL(request.url);
     const target = url.searchParams.get("url") || (request.method === "POST" ? await readUrlFromBody(request) : "");
-    const depth = clampInt(url.searchParams.get("depth"), 1, 4, CONFIG.MAX_DEPTH);
+    const depth = clampInt(url.searchParams.get("depth"), 1, 10, CONFIG.MAX_DEPTH);
     const query = url.searchParams.get("q") || "";
 
     if (!target) return json({ ok: false, error: "Missing url" }, 400);
@@ -312,12 +311,13 @@ async function readUrlFromBody(request) {
     return text.trim();
   }
 }
+
 async function crawlSite(target, opts = {}) {
   const start = normalizeHttpUrl(target);
   if (!start) throw new Error("Only http and https URLs are allowed");
   if (isBlockedHost(start.hostname)) throw new Error("That host is not allowed");
 
-  const maxDepth = clampInt(opts.maxDepth, 1, 4, CONFIG.MAX_DEPTH);
+  const maxDepth = clampInt(opts.maxDepth, 1, 10, CONFIG.MAX_DEPTH);
   const rootOrigin = start.origin;
   const queue = [{ url: start.href, depth: 0, kind: "html", referrer: null }];
   const visited = new Set();
@@ -328,7 +328,7 @@ async function crawlSite(target, opts = {}) {
   let assets = 0;
   let textFiles = 0;
 
-  while (queue.length && entries.length < CONFIG.MAX_ASSETS + CONFIG.MAX_PAGES) {
+  while (queue.length && entries.length < CONFIG.MAX_PAGES + CONFIG.MAX_ASSETS + 300) {
     const job = queue.shift();
     const normalized = normalizeAndCanonicalize(job.url, rootOrigin);
     if (!normalized || visited.has(normalized)) continue;
@@ -336,9 +336,10 @@ async function crawlSite(target, opts = {}) {
 
     visited.add(normalized);
 
-    const res = await fetchText(normalized, textLimitForUrl(normalized), rootOrigin);
-    const type = classifyContentType(res.contentType, normalized);
-    const path = pathFromUrl(normalized, rootOrigin);
+    const requestKind = String(job.kind || "").toLowerCase();
+    const res = await fetchText(normalized, textLimitForUrl(normalized), rootOrigin, { kindHint: requestKind });
+    const type = classifyContentType(res.contentType, normalized, requestKind, res.content || "");
+    const path = pathFromUrl(res.finalUrl || normalized, rootOrigin);
 
     const entry = {
       id: stableId(normalized),
@@ -359,71 +360,88 @@ async function crawlSite(target, opts = {}) {
       textContent: "",
       inline: false,
     };
-if (type.kind === "html") {
-  pages += 1;
-  entry.pretty = formatHtml(entry.content);
-  entry.textContent = cleanText(stripTags(entry.content));
-  const extracted = extractFromHtml(entry.content, entry.finalUrl, rootOrigin);
-  entry.links = asArray(extracted.links);
-  entry.assets = asArray(extracted.assets);
-  entry.inlineBlocks = asArray(extracted.inlineBlocks);
-  entry.styles = asArray(extracted.styles);
-  entry.scripts = asArray(extracted.scripts);
-  for (const block of entry.inlineBlocks) {
-    const virtualUrl = `${normalized}#inline-${block.kind}-${block.index}`;
-    const virtualEntry = {
-      id: stableId(virtualUrl),
-      url: virtualUrl,
-      path: `${path} [inline ${block.kind} ${block.index + 1}]`,
-      origin: entry.origin,
-      depth: job.depth,
-      kind: block.kind,
-      type: block.kind,
-      method: "INLINE",
-      status: 200,
-      contentType: block.kind === "css" ? "text/css" : "application/javascript",
-      size: block.content.length,
-      content: block.content,
-      finalUrl: normalized,
-      referrer: normalized,
-      discoveredFrom: "inline",
-      textContent: block.content,
-      inline: true,
-      parentId: entry.id,
-      pretty: block.kind === "css" ? formatCss(block.content) : formatJs(block.content),
-    };
-    entries.push(virtualEntry);
-    groups[block.kind].push(virtualEntry);
-  }
-  if (job.depth < maxDepth) {
-    for (const next of asArray(extracted.pages)) {
-      queue.push({ url: next, depth: job.depth + 1, kind: "html", referrer: normalized });
-    }
-    for (const next of asArray(extracted.styles)) {
-      queue.push({ url: next, depth: job.depth + 1, kind: "css", referrer: normalized });
-    }
-    for (const next of asArray(extracted.scripts)) {
-      queue.push({ url: next, depth: job.depth + 1, kind: "js", referrer: normalized });
-    }
-  }
+
+    if (type.kind === "html") {
+      pages += 1;
+      entry.pretty = formatHtml(entry.content);
+      entry.textContent = cleanText(stripTags(entry.content));
+      const extracted = extractFromHtml(entry.content, entry.finalUrl, rootOrigin);
+      entry.links = asArray(extracted.links);
+      entry.assets = asArray(extracted.assets);
+      entry.inlineBlocks = asArray(extracted.inlineBlocks);
+      entry.styles = asArray(extracted.styles);
+      entry.scripts = asArray(extracted.scripts);
+      for (const block of entry.inlineBlocks) {
+        const virtualUrl = `${normalized}#inline-${block.kind}-${block.index}`;
+        const virtualEntry = {
+          id: stableId(virtualUrl),
+          url: virtualUrl,
+          path: `${path} [inline ${block.kind} ${block.index + 1}]`,
+          origin: entry.origin,
+          depth: job.depth,
+          kind: block.kind,
+          type: block.kind,
+          method: "INLINE",
+          status: 200,
+          contentType: block.kind === "css" ? "text/css" : "application/javascript",
+          size: block.content.length,
+          content: block.content,
+          finalUrl: normalized,
+          referrer: normalized,
+          discoveredFrom: "inline",
+          textContent: block.content,
+          inline: true,
+          parentId: entry.id,
+          pretty: block.kind === "css" ? formatCss(block.content) : formatJs(block.content),
+        };
+        entries.push(virtualEntry);
+        groups[block.kind].push(virtualEntry);
+      }
+      if (job.depth < maxDepth) {
+        for (const next of asArray(extracted.pages)) {
+          queue.push({ url: next, depth: job.depth + 1, kind: "html", referrer: normalized });
+        }
+        for (const next of asArray(extracted.styles)) {
+          queue.push({ url: next, depth: job.depth + 1, kind: "css", referrer: normalized });
+        }
+        for (const next of asArray(extracted.scripts)) {
+          queue.push({ url: next, depth: job.depth + 1, kind: "js", referrer: normalized });
+        }
+        for (const next of asArray(extracted.assets)) {
+          if (shouldQueueAsset(next)) {
+            queue.push({ url: next, depth: job.depth + 1, kind: "asset", referrer: normalized });
+          }
+        }
+      }
     } else if (type.kind === "css") {
       assets += 1;
       entry.pretty = formatCss(entry.content);
       const extracted = extractFromCss(entry.content, entry.finalUrl, rootOrigin);
       entry.assets = extracted.assets;
+      if (job.depth < maxDepth) {
+        for (const next of asArray(extracted.assets)) {
+          if (shouldQueueAsset(next)) queue.push({ url: next, depth: job.depth + 1, kind: "asset", referrer: normalized });
+        }
+      }
     } else if (type.kind === "js") {
       assets += 1;
       entry.pretty = formatJs(entry.content);
       const extracted = extractFromJs(entry.content, entry.finalUrl, rootOrigin);
       entry.assets = extracted.assets;
+      if (job.depth < maxDepth) {
+        for (const next of asArray(extracted.assets)) {
+          if (shouldQueueAsset(next)) queue.push({ url: next, depth: job.depth + 1, kind: "asset", referrer: normalized });
+        }
+      }
     } else if (type.kind === "text") {
       textFiles += 1;
       entry.textContent = cleanText(entry.content);
     } else {
       assets += 1;
     }
+
     entries.push(entry);
-    insertTreeNode(tree, normalized, entry);
+    insertTreeNode(tree, normalized, entry, rootOrigin);
 
     if (type.kind === "html") groups.html.push(entry);
     else if (type.kind === "css") groups.css.push(entry);
@@ -489,7 +507,10 @@ function buildInitialViewerUrl(originalUrl) {
 function buildProxyBase(originalUrl, proxyOrigin) {
   const u = normalizeHttpUrl(originalUrl);
   if (!u) return "";
-  const path = u.pathname && u.pathname.length ? u.pathname : "/";
+  let path = u.pathname && u.pathname.length ? u.pathname : "/";
+  if (!path.endsWith("/") && !/\.[a-z0-9]+$/i.test((path.split("/").pop() || ""))) {
+    path += "/";
+  }
   return `${proxyOrigin}/browse/${u.protocol.replace(":", "")}/${u.host}${path}`;
 }
 function renderProxiedHtml({ html, pageUrl, proxyOrigin }) {
@@ -770,7 +791,8 @@ function buildProxyUrl(originalUrl, proxyOrigin) {
   const u = normalizeHttpUrl(originalUrl);
   if (!u) return originalUrl;
   const path = u.pathname && u.pathname.length ? u.pathname : "/";
-  return `${proxyOrigin}/browse/${u.protocol.replace(":", "")}/${u.host}${path}${u.search || ""}${u.hash || ""}`;
+  const encodedPath = path.split("/").map((segment, index) => (index === 0 ? "" : encodePathSegment(segment))).join("/");
+  return `${proxyOrigin}/browse/${u.protocol.replace(":", "")}/${u.host}${encodedPath}${u.search || ""}${u.hash || ""}`;
 }
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (m) => ({
@@ -794,7 +816,21 @@ function decodePathSegment(segment) {
     return segment;
   }
 }
-async function fetchText(url, limit, rootOrigin = null) {
+function encodePathSegment(segment) {
+  try {
+    return encodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+function decodePathname(pathname) {
+  return String(pathname || "")
+    .split("/")
+    .map((segment) => decodePathSegment(segment))
+    .join("/");
+}
+
+async function fetchText(url, limit, rootOrigin = null, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort("timeout"), CONFIG.REQUEST_TIMEOUT_MS);
   try {
@@ -818,11 +854,20 @@ async function fetchText(url, limit, rootOrigin = null) {
     }
 
     const contentType = res.headers.get("content-type") || "";
+    const kindHint = String(options?.kindHint || "").toLowerCase();
+    const forceText = Boolean(options?.forceText);
     let text = "";
-    if (isTextLike(contentType) || likelyTextUrl(finalUrl)) {
+
+    if (shouldReadAsText(contentType, finalUrl, kindHint, forceText)) {
       text = await res.text();
-      if (text.length > limit) text = text.slice(0, limit) + "\n\n/* truncated */";
+    } else if (!isClearlyBinaryContentType(contentType)) {
+      const clone = res.clone();
+      if (await looksTextualResponse(clone)) {
+        text = await res.text();
+      }
     }
+
+    if (text.length > limit) text = text.slice(0, limit) + "\n\n/* truncated */";
 
     return {
       status: res.status,
@@ -841,6 +886,40 @@ async function fetchText(url, limit, rootOrigin = null) {
     clearTimeout(timer);
   }
 }
+function shouldReadAsText(contentType, url, kindHint = "", forceText = false) {
+  if (forceText) return true;
+  const hint = String(kindHint || "").toLowerCase();
+  if (["html", "css", "js", "text"].includes(hint)) return true;
+  const ct = String(contentType || "").toLowerCase();
+  if (
+    ct.includes("text/") ||
+    ct.includes("javascript") ||
+    ct.includes("json") ||
+    ct.includes("xml") ||
+    ct.includes("svg") ||
+    ct.includes("x-www-form-urlencoded")
+  ) return true;
+  return likelyTextUrl(url);
+}
+function isClearlyBinaryContentType(contentType) {
+  const ct = String(contentType || "").toLowerCase();
+  return /^(image\/|audio\/|video\/|font\/|application\/pdf|application\/zip|application\/x-7z-compressed|application\/x-rar-compressed|application\/octet-stream)/i.test(ct);
+}
+async function looksTextualResponse(response) {
+  try {
+    const buf = new Uint8Array(await response.arrayBuffer());
+    if (!buf.length) return true;
+    const sample = buf.slice(0, Math.min(buf.length, 4096));
+    let suspicious = 0;
+    for (const b of sample) {
+      if (b === 0) return false;
+      if ((b < 9) || (b > 13 && b < 32)) suspicious += 1;
+    }
+    return suspicious / Math.max(1, sample.length) < 0.08;
+  } catch {
+    return false;
+  }
+}
 function textLimitForUrl(url) {
   const u = String(url || "");
   if (/\.(html?|php|asp|aspx|jsp)(\?|#|$)/i.test(u)) return CONFIG.MAX_HTML;
@@ -848,13 +927,21 @@ function textLimitForUrl(url) {
   if (/\.m?js(\?|#|$)/i.test(u)) return CONFIG.MAX_JS;
   return CONFIG.MAX_TEXT_PER_FILE;
 }
-function classifyContentType(contentType, url) {
+function classifyContentType(contentType, url, hintKind = "", content = "") {
   const ct = String(contentType || "").toLowerCase();
   const path = String(url || "").toLowerCase();
+  const sample = String(content || "").trimStart().slice(0, 1600).toLowerCase();
+  const hint = String(hintKind || "").toLowerCase();
 
-  if (ct.includes("text/html") || path.match(/\.(html?|php|asp|aspx|jsp)(\?|#|$)/)) return { kind: "html", type: "html" };
-  if (ct.includes("text/css") || path.match(/\.css(\?|#|$)/)) return { kind: "css", type: "css" };
-  if (ct.includes("javascript") || path.match(/\.m?js(\?|#|$)/)) return { kind: "js", type: "js" };
+  if (ct.includes("text/html") || path.match(/\.(html?|php|asp|aspx|jsp)(\?|#|$)/) || sample.startsWith("<!doctype") || sample.startsWith("<html") || sample.startsWith("<head") || sample.startsWith("<body")) {
+    return { kind: "html", type: "html" };
+  }
+  if (ct.includes("text/css") || path.match(/\.css(\?|#|$)/) || hint === "css" || (/\{[^}]{0,400}\}/.test(sample) && (sample.includes("@import") || sample.includes("url(") || sample.includes(";") || sample.includes("{")))) {
+    return { kind: "css", type: "css" };
+  }
+  if (ct.includes("javascript") || path.match(/\.m?js(\?|#|$)/) || hint === "js" || sample.includes("function ") || sample.includes("=>") || sample.includes("const ") || sample.includes("let ") || sample.includes("var ") || sample.includes("export ") || sample.includes("import ")) {
+    return { kind: "js", type: "js" };
+  }
   if (ct.includes("json") || path.match(/\.json(\?|#|$)/)) return { kind: "text", type: "json" };
   if (ct.includes("xml") || path.match(/\.xml(\?|#|$)/)) return { kind: "text", type: "xml" };
   if (ct.includes("svg") || path.match(/\.svg(\?|#|$)/)) return { kind: "text", type: "svg" };
@@ -883,6 +970,12 @@ function normalizeHttpUrl(input) {
   } catch {
     return null;
   }
+}
+function shouldQueueAsset(url) {
+  const s = String(url || "").trim();
+  if (!s) return false;
+  if (/^(data:|javascript:|mailto:|tel:|blob:|#)/i.test(s)) return false;
+  return true;
 }
 function normalizeAndCanonicalize(raw, rootOrigin) {
   try {
@@ -925,16 +1018,23 @@ function stableId(s) {
   }
   return "f_" + (h >>> 0).toString(16);
 }
-function pathFromUrl(url, rootOrigin) {
+function displayPathFromUrl(url, rootOrigin) {
   try {
     const u = new URL(url);
     if (u.origin !== rootOrigin) return u.href;
-    let p = u.pathname || "/";
-    if (p === "/") p = "/index.html";
-    return p + (u.search || "");
+    let p = decodePathname(u.pathname || "/");
+    if (!p) return "index.html";
+    if (!p.startsWith("/")) p = "/" + p;
+    p = p.replace(/\/{2,}/g, "/");
+    if (p === "/") return "index.html";
+    if (p.endsWith("/")) return `${p}index.html`.replace(/^\//, "");
+    return p.startsWith("/") ? p.slice(1) : p;
   } catch {
-    return url;
+    return String(url || "");
   }
+}
+function pathFromUrl(url, rootOrigin) {
+  return displayPathFromUrl(url, rootOrigin);
 }
 function stripTags(html) {
   return String(html || "")
@@ -1141,14 +1241,14 @@ function searchCorpus(entries, term) {
   }
   return hits.slice(0, CONFIG.MAX_SEARCH_RESULTS);
 }
-function insertTreeNode(tree, url, entry) {
-  const u = new URL(url);
-  const parts = u.pathname.split("/").filter(Boolean);
+function insertTreeNode(tree, url, entry, rootOrigin) {
+  const path = normalizeTreePath(entry?.path || displayPathFromUrl(url, rootOrigin) || "");
+  const parts = String(path || "").split("/").filter(Boolean);
   let node = tree;
 
   if (!node.children) node.children = {};
 
-  const rootKey = u.origin;
+  const rootKey = entry?.origin || (new URL(url)).origin;
   if (!node.children[rootKey]) {
     node.children[rootKey] = { label: rootKey, children: {}, entry: null };
   }
@@ -1179,6 +1279,7 @@ function treeNodeToObject(n) {
     children: n.children ? Object.fromEntries(Object.entries(n.children).map(([k, v]) => [k, treeNodeToObject(v)])) : {},
   };
 }
+
 function renderTerminalTree(entries, rootUrl) {
   const siteLabel = siteLabelFromUrl(rootUrl);
   const rootId = stableId(rootUrl);
@@ -1187,26 +1288,31 @@ function renderTerminalTree(entries, rootUrl) {
   for (const entry of entries || []) {
     if (!isRenderableTreeEntry(entry)) continue;
     const path = normalizeTreePath(entry?.path || entry?.url || "");
-    if (!path || seen.has(path)) continue;
-    seen.add(path);
+    if (!path) continue;
+    const key = `${entry.inline ? "inline:" : ""}${entry.kind || "asset"}:${path}:${entry.url || ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     items.push({
       path,
       current: stableId(entry?.url || "") === rootId,
+      kind: entry.kind || "asset",
+      inline: Boolean(entry.inline),
     });
   }
   if (!items.length) return `(${siteLabel})\n|`;
+
   items.sort((a, b) => a.path.localeCompare(b.path));
   const tree = { files: [], folders: new Map() };
   for (const item of items) {
     const p = item.path;
     if (p === "index.html") {
-      tree.files.push({ name: "index.html", current: item.current });
+      tree.files.push({ name: "index.html", current: item.current, kind: item.kind, inline: item.inline });
       continue;
     }
     const body = p.startsWith("/") ? p.slice(1) : p;
     const parts = body.split("/").filter(Boolean);
     if (parts.length <= 1) {
-      tree.files.push({ name: parts[0] || body, current: item.current });
+      tree.files.push({ name: parts[0] || body, current: item.current, kind: item.kind, inline: item.inline });
       continue;
     }
     let node = tree;
@@ -1216,14 +1322,16 @@ function renderTerminalTree(entries, rootUrl) {
       }
       node = node.folders.get(folderName);
     }
-    node.files.push({ name: parts[parts.length - 1], current: item.current });
+    node.files.push({ name: parts[parts.length - 1], current: item.current, kind: item.kind, inline: item.inline });
   }
+
   const lines = [`(${siteLabel})`];
   const rootFiles = tree.files
     .filter((f) => f.name === "index.html")
     .concat(tree.files.filter((f) => f.name !== "index.html").sort((a, b) => a.name.localeCompare(b.name)));
   for (const file of rootFiles) {
-    lines.push(`|---${file.name}${file.current ? " [CURRENT]" : ""}`);
+    const suffix = file.current ? " [CURRENT]" : "";
+    lines.push(`|---${file.name}${suffix}`);
     lines.push("|");
   }
   function renderFolder(node, depth) {
@@ -1233,7 +1341,8 @@ function renderTerminalTree(entries, rootUrl) {
       lines.push(`${pad}|---/${folderName}`);
       const files = child.files.slice().sort((a, b) => a.name.localeCompare(b.name));
       for (const file of files) {
-        lines.push(`${pad}|   |---/${file.name}${file.current ? " [CURRENT]" : ""}`);
+        const suffix = file.current ? " [CURRENT]" : "";
+        lines.push(`${pad}|   |---/${file.name}${suffix}`);
       }
       renderFolder(child, depth + 1);
       lines.push("|");
