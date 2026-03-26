@@ -165,6 +165,21 @@ export default {
     });
   },
 };
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+function isRenderableTreeEntry(entry) {
+  return !!entry && (entry.kind === "html" || entry.kind === "css" || entry.kind === "js");
+}
+function normalizeTreePath(path) {
+  let p = String(path || "").trim().replace(/\\/g, "/");
+  if (!p) return "";
+  if (!p.startsWith("/")) p = "/" + p;
+  p = p.replace(/\/{2,}/g, "/");
+
+  if (/^\/index\.html(?:[?#]|$)/i.test(p)) return "index.html";
+  return p;
+}
 async function handleAnalyze(request) {
   try {
     const url = new URL(request.url);
@@ -287,9 +302,6 @@ function baseHeaders(contentType) {
     "referrer-policy": "no-referrer",
   };
 }
-function asArray(value) {
-  return Array.isArray(value) ? value : [];
-}
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -357,52 +369,54 @@ async function crawlSite(target, opts = {}) {
       textContent: "",
       inline: false,
     };
-
-    if (type.kind === "html") {
-      pages += 1;
-      entry.pretty = formatHtml(entry.content);
-      entry.textContent = cleanText(stripTags(entry.content));
-      const extracted = extractFromHtml(entry.content, entry.finalUrl, rootOrigin);
-      entry.links = extracted.links;
-      entry.assets = extracted.assets;
-      entry.inlineBlocks = extracted.inlineBlocks;
-      for (const block of extracted.inlineBlocks) {
-        const virtualUrl = `${normalized}#inline-${block.kind}-${block.index}`;
-        const virtualEntry = {
-          id: stableId(virtualUrl),
-          url: virtualUrl,
-          path: `${path} [inline ${block.kind} ${block.index + 1}]`,
-          origin: entry.origin,
-          depth: job.depth,
-          kind: block.kind,
-          type: block.kind,
-          method: "INLINE",
-          status: 200,
-          contentType: block.kind === "css" ? "text/css" : "application/javascript",
-          size: block.content.length,
-          content: block.content,
-          finalUrl: normalized,
-          referrer: normalized,
-          discoveredFrom: "inline",
-          textContent: block.content,
-          inline: true,
-          parentId: entry.id,
-          pretty: block.kind === "css" ? formatCss(block.content) : formatJs(block.content),
-        };
-        entries.push(virtualEntry);
-        groups[block.kind].push(virtualEntry);
-      }
-      if (job.depth < maxDepth) {
-        for (const next of extracted.pages) {
-          queue.push({ url: next, depth: job.depth + 1, kind: "html", referrer: normalized });
-        }
-        for (const next of extracted.styles) {
-          queue.push({ url: next, depth: job.depth + 1, kind: "css", referrer: normalized });
-        }
-        for (const next of extracted.scripts) {
-          queue.push({ url: next, depth: job.depth + 1, kind: "js", referrer: normalized });
-        }
-      }
+if (type.kind === "html") {
+  pages += 1;
+  entry.pretty = formatHtml(entry.content);
+  entry.textContent = cleanText(stripTags(entry.content));
+  const extracted = extractFromHtml(entry.content, entry.finalUrl, rootOrigin);
+  entry.links = asArray(extracted.links);
+  entry.assets = asArray(extracted.assets);
+  entry.inlineBlocks = asArray(extracted.inlineBlocks);
+  entry.styles = asArray(extracted.styles);
+  entry.scripts = asArray(extracted.scripts);
+  for (const block of entry.inlineBlocks) {
+    const virtualUrl = `${normalized}#inline-${block.kind}-${block.index}`;
+    const virtualEntry = {
+      id: stableId(virtualUrl),
+      url: virtualUrl,
+      path: `${path} [inline ${block.kind} ${block.index + 1}]`,
+      origin: entry.origin,
+      depth: job.depth,
+      kind: block.kind,
+      type: block.kind,
+      method: "INLINE",
+      status: 200,
+      contentType: block.kind === "css" ? "text/css" : "application/javascript",
+      size: block.content.length,
+      content: block.content,
+      finalUrl: normalized,
+      referrer: normalized,
+      discoveredFrom: "inline",
+      textContent: block.content,
+      inline: true,
+      parentId: entry.id,
+      pretty: block.kind === "css" ? formatCss(block.content) : formatJs(block.content),
+    };
+    entries.push(virtualEntry);
+    groups[block.kind].push(virtualEntry);
+  }
+  if (job.depth < maxDepth) {
+    for (const next of asArray(extracted.pages)) {
+      queue.push({ url: next, depth: job.depth + 1, kind: "html", referrer: normalized });
+    }
+    for (const next of asArray(extracted.styles)) {
+      queue.push({ url: next, depth: job.depth + 1, kind: "css", referrer: normalized });
+    }
+    for (const next of asArray(extracted.scripts)) {
+      queue.push({ url: next, depth: job.depth + 1, kind: "js", referrer: normalized });
+    }
+  }
+}
     } else if (type.kind === "css") {
       assets += 1;
       entry.pretty = formatCss(entry.content);
@@ -1182,53 +1196,68 @@ function isRenderableTreeEntry(entry) {
 function renderTerminalTree(entries, rootUrl) {
   const siteLabel = siteLabelFromUrl(rootUrl);
   const rootId = stableId(rootUrl);
-  const rows = [];
+  const items = [];
   const seen = new Set();
   for (const entry of entries || []) {
     if (!isRenderableTreeEntry(entry)) continue;
-    const path = terminalPathLabel(entry?.path || entry?.url || "");
+    const path = normalizeTreePath(entry?.path || entry?.url || "");
     if (!path || seen.has(path)) continue;
     seen.add(path);
-    rows.push({
+    items.push({
       path,
       current: stableId(entry?.url || "") === rootId,
     });
   }
-  if (!rows.length) return `(${siteLabel})\n|`;
-  const root = { files: [], folders: new Map() };
-  for (const row of rows) {
-    const body = row.path.startsWith("/") ? row.path.slice(1) : row.path;
-    const parts = body.split("/").filter(Boolean);
-    if (parts.length <= 1) {
-      root.files.push({ name: parts[0] || body, current: row.current });
+  if (!items.length) return `(${siteLabel})\n|`;
+  items.sort((a, b) => a.path.localeCompare(b.path));
+  const tree = { files: [], folders: new Map() };
+  for (const item of items) {
+    let p = item.path;
+    if (p === "index.html") {
+      tree.files.push({ name: "index.html", current: item.current });
       continue;
     }
-    let node = root;
+    const body = p.startsWith("/") ? p.slice(1) : p;
+    const parts = body.split("/").filter(Boolean);
+    if (parts.length <= 1) {
+      tree.files.push({ name: parts[0] || body, current: item.current });
+      continue;
+    }
+    let node = tree;
     for (const folderName of parts.slice(0, -1)) {
       if (!node.folders.has(folderName)) {
         node.folders.set(folderName, { files: [], folders: new Map() });
       }
       node = node.folders.get(folderName);
     }
-    node.files.push({ name: parts[parts.length - 1], current: row.current });
+    node.files.push({ name: parts[parts.length - 1], current: item.current });
   }
   const lines = [`(${siteLabel})`];
-  for (const file of root.files) {
+  const rootFiles = tree.files.filter((f) => f.name === "index.html")
+    .concat(tree.files.filter((f) => f.name !== "index.html").sort((a, b) => a.name.localeCompare(b.name)));
+  for (const file of rootFiles) {
     lines.push(`|---${file.name}${file.current ? " [CURRENT]" : ""}`);
     lines.push("|");
   }
   function renderFolder(node, depth) {
-    for (const [folderName, child] of node.folders.entries()) {
-      lines.push(`|${"-".repeat(3 + depth)}/${folderName}`);
+    const folders = [...node.folders.entries()].sort(([a], [b]) => a.localeCompare(b));
 
-      for (const file of child.files) {
-        lines.push(`|${" ".repeat(depth * 10)}|---/${file.name}${file.current ? " [CURRENT]" : ""}`);
+    for (const [folderName, child] of folders) {
+      const pad = "|   ".repeat(depth);
+      lines.push(`${pad}|---/${folderName}`);
+
+      const files = child.files.slice().sort((a, b) => a.name.localeCompare(b.name));
+      for (const file of files) {
+        lines.push(`${pad}|   |---/${file.name}${file.current ? " [CURRENT]" : ""}`);
       }
+
       renderFolder(child, depth + 1);
       lines.push("|");
     }
   }
-  renderFolder(root, 1);
+
+  renderFolder(tree, 0);
+
   if (lines[lines.length - 1] !== "|") lines.push("|");
   return lines.join("\n");
 }
