@@ -1101,42 +1101,43 @@ function renderTerminalTree(entries, rootUrl) {
   const siteLabel = siteLabelFromUrl(rootUrl);
   const rows = [];
   const seen = new Set();
-
   for (const entry of entries || []) {
     const path = terminalPathLabel(entry?.path || entry?.url || "");
     if (!path || seen.has(path)) continue;
     seen.add(path);
     rows.push({ path, group: terminalGroupKey(path) });
   }
-
   if (!rows.length) return `(${siteLabel})\n|`;
-
   const out = [`(${siteLabel})`];
   let lastGroup = null;
-
   for (const row of rows) {
     if (lastGroup !== null && row.group !== lastGroup) out.push("|");
     out.push(`|---${row.path}`);
     lastGroup = row.group;
   }
-
   out.push("|");
   return out.join("\n");
 }
-function renderTreeBranch(label, node, prefix, isLast, lines) {
-  const connector = isLast ? "└── " : "├── ";
-  lines.push(`${prefix}${connector}${label}`);
-  const children = sortTreeEntries(node?.children || {});
-  if (!children.length) return;
-  const nextPrefix = prefix + (isLast ? "    " : "│   ");
-  children.forEach(([childLabel, childNode], index) => {
-    renderTreeBranch(childLabel, childNode, nextPrefix, index === children.length - 1, lines);
-  });
+function terminalPathLabel(path) {
+  let p = String(path || "").trim().replace(/\\/g, "/");
+  if (!p) return "";
+  if (!p.startsWith("/")) p = "/" + p;
+  if (/^\/index\.html(?:[?#]|$)/i.test(p)) return "index.html";
+  return p;
 }
-function sortTreeEntries(obj) {
-  return Object.entries(obj || {}).sort(([a], [b]) =>
-    a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
-  );
+function terminalGroupKey(path) {
+  const p = String(path || "").trim();
+  if (p === "index.html") return "__root__";
+  const body = p.startsWith("/") ? p.slice(1) : p;
+  return (body.split("/")[0] || "__root__").toLowerCase();
+}
+function siteLabelFromUrl(rootUrl) {
+  try {
+    const u = new URL(rootUrl);
+    return u.host || u.hostname || u.origin || "Site";
+  } catch {
+    return String(rootUrl || "Site");
+  }
 }
 function siteLabelFromUrl(rootUrl) {
   try {
