@@ -352,7 +352,7 @@ async function crawlSite(target, opts = {}) {
           queue.push({ url: next, depth: job.depth + 1, kind: "asset", referrer: normalized });
         }
       }
-    } } else if (type.kind === "css") {
+    } else if (type.kind === "css") {
       assets += 1;
       entry.pretty = formatCss(entry.content);
       const extracted = extractFromCss(entry.content, entry.finalUrl, rootOrigin);
