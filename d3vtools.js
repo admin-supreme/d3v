@@ -169,7 +169,14 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 function isRenderableTreeEntry(entry) {
-  return !!entry && (entry.kind === "html" || entry.kind === "css" || entry.kind === "js");
+  if (!entry) return false;
+  if (entry.inline) {
+    return entry.kind === "css" || entry.kind === "js";
+  }
+  if (entry.discoveredFrom !== "html") {
+    return false;
+  }
+  return entry.kind === "html" || entry.kind === "css" || entry.kind === "js";
 }
 function normalizeTreePath(path) {
   let p = String(path || "").trim().replace(/\\/g, "/");
@@ -228,70 +235,53 @@ async function handleRaw(request) {
 async function handleBrowse(request) {
   const reqUrl = new URL(request.url);
   const original = resolveOriginalFromBrowseUrl(reqUrl);
-  if (!original) return new Response("Missing url", { status: 400, headers: baseHeaders("text/plain; charset=utf-8") });
+  if (!original) {
+    return new Response("Missing url", {
+      status: 400,
+      headers: baseHeaders("text/plain; charset=utf-8"),
+    });
+  }
 
   const res = await fetchText(original, textLimitForUrl(original), new URL(original).origin);
   const type = classifyContentType(res.contentType, original);
-if (type.kind === "html") {
-  pages += 1;
-  entry.pretty = formatHtml(entry.content);
-  entry.textContent = cleanText(stripTags(entry.content));
-  const extracted = extractFromHtml(entry.content, entry.finalUrl, rootOrigin);
-  entry.links = asArray(extracted.links);
-  entry.assets = asArray(extracted.assets);
-  entry.inlineBlocks = asArray(extracted.inlineBlocks);
-  for (const block of entry.inlineBlocks) {
-    const virtualUrl = `${normalized}#inline-${block.kind}-${block.index}`;
-    const virtualEntry = {
-      id: stableId(virtualUrl),
-      url: virtualUrl,
-      path: `${path} [inline ${block.kind} ${block.index + 1}]`,
-      origin: entry.origin,
-      depth: job.depth,
-      kind: block.kind,
-      type: block.kind,
-      method: "INLINE",
-      status: 200,
-      contentType: block.kind === "css" ? "text/css" : "application/javascript",
-      size: block.content.length,
-      content: block.content,
-      finalUrl: normalized,
-      referrer: normalized,
-      discoveredFrom: "inline",
-      textContent: block.content,
-      inline: true,
-      parentId: entry.id,
-      pretty: block.kind === "css" ? formatCss(block.content) : formatJs(block.content),
-    };
-    entries.push(virtualEntry);
-    groups[block.kind].push(virtualEntry);
+
+  if (type.kind === "html") {
+    const html = renderProxiedHtml({
+      html: res.content || "",
+      pageUrl: res.finalUrl || original,
+      proxyOrigin: reqUrl.origin,
+    });
+
+    return new Response(html, {
+      status: res.status || 200,
+      headers: {
+        ...baseHeaders("text/html; charset=utf-8"),
+        "content-security-policy":
+          "default-src * data: blob: 'unsafe-inline' 'unsafe-eval'; img-src * data: blob:; media-src * data: blob:; connect-src * data: blob:; frame-src * data: blob:;",
+        "x-frame-options": "ALLOWALL",
+        "permissions-policy": "fullscreen=*, clipboard-read=*, clipboard-write=*",
+      },
+    });
   }
 
-  if (job.depth < maxDepth) {
-    for (const next of asArray(extracted.pages)) {
-      queue.push({ url: next, depth: job.depth + 1, kind: "html", referrer: normalized });
-    }
-    for (const next of asArray(extracted.styles)) {
-      queue.push({ url: next, depth: job.depth + 1, kind: "css", referrer: normalized });
-    }
-    for (const next of asArray(extracted.scripts)) {
-      queue.push({ url: next, depth: job.depth + 1, kind: "js", referrer: normalized });
-    }
+  if (type.kind === "css") {
+    const css = rewriteCss(res.content || "", res.finalUrl || original, reqUrl.origin);
+    return new Response(css, {
+      status: res.status || 200,
+      headers: baseHeaders("text/css; charset=utf-8"),
+    });
   }
-}
-  const html = renderProxiedHtml({
-    html: res.content || "",
-    pageUrl: res.finalUrl || original,
-    proxyOrigin: reqUrl.origin,
-  });
-  return new Response(html, {
+
+  if (type.kind === "js") {
+    return new Response(res.content || "", {
+      status: res.status || 200,
+      headers: baseHeaders("application/javascript; charset=utf-8"),
+    });
+  }
+
+  return new Response(res.content || "", {
     status: res.status || 200,
-    headers: {
-      ...baseHeaders("text/html; charset=utf-8"),
-      "content-security-policy": "default-src * data: blob: 'unsafe-inline' 'unsafe-eval'; img-src * data: blob:; media-src * data: blob:; connect-src * data: blob:; frame-src * data: blob:;",
-      "x-frame-options": "ALLOWALL",
-      "permissions-policy": "fullscreen=*, clipboard-read=*, clipboard-write=*",
-    },
+    headers: baseHeaders(res.contentType || "text/plain; charset=utf-8"),
   });
 }
 function baseHeaders(contentType) {
@@ -347,9 +337,7 @@ async function crawlSite(target, opts = {}) {
     visited.add(normalized);
 
     const res = await fetchText(normalized, textLimitForUrl(normalized), rootOrigin);
-    const type = job.kind === "html"
-  ? classifyContentType(res.contentType, normalized)
-  : { kind: job.kind, type: job.kind };
+    const type = classifyContentType(res.contentType, normalized);
     const path = pathFromUrl(normalized, rootOrigin);
 
     const entry = {
@@ -704,42 +692,29 @@ function rewriteHtmlUrls(html, pageUrl, proxyOrigin) {
   ];
 
   for (const attr of attrMap) {
-    const re = new RegExp(
-      `\\b${escapeRegExp(attr)}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`,
-      "gi"
-    );
-
-    out = out.replace(re, (m, dq, sq, uq) => {
-      const raw = dq ?? sq ?? uq ?? "";
-      const next = proxifyUrl(raw, pageUrl, proxyOrigin);
-      if (!next) return m;
-      const quote = dq !== undefined ? '"' : sq !== undefined ? "'" : '"';
-      return `${attr}=${quote}${escapeHtmlAttr(next)}${quote}`;
+    const re = new RegExp(`\\b${escapeRegExp(attr)}=(["'])(.*?)\\1`, "gi");
+    out = out.replace(re, (m, q, value) => {
+      const next = proxifyUrl(value, pageUrl, proxyOrigin);
+      return next ? `${attr}=${q}${escapeHtmlAttr(next)}${q}` : m;
     });
   }
 
-  out = out.replace(/\bsrcset\s*=\s*(?:"([^"]*)"|'([^']*)'|([^>\s]+))/gi, (m, dq, sq, uq) => {
-    const raw = dq ?? sq ?? uq ?? "";
-    const next = rewriteSrcset(raw, pageUrl, proxyOrigin);
-    if (!next) return m;
-    const quote = dq !== undefined ? '"' : sq !== undefined ? "'" : '"';
-    return `srcset=${quote}${escapeHtmlAttr(next)}${quote}`;
+  out = out.replace(/\bsrcset=(["'])(.*?)\1/gi, (m, q, value) => {
+    const next = rewriteSrcset(value, pageUrl, proxyOrigin);
+    return next ? `srcset=${q}${escapeHtmlAttr(next)}${q}` : m;
   });
 
-  out = out.replace(/\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)'|([^>\s]+))/gi, (m, dq, sq, uq) => {
-    const raw = dq ?? sq ?? uq ?? "";
-    const next = rewriteCss(raw, pageUrl, proxyOrigin);
-    if (!next) return m;
-    const quote = dq !== undefined ? '"' : sq !== undefined ? "'" : '"';
-    return `style=${quote}${escapeHtmlAttr(next)}${quote}`;
+  out = out.replace(/\bstyle=(["'])(.*?)\1/gi, (m, q, value) => {
+    const next = rewriteCss(value, pageUrl, proxyOrigin);
+    return next ? `style=${q}${escapeHtmlAttr(next)}${q}` : m;
   });
 
   out = out.replace(/<style\b([^>]*)>([\s\S]*?)<\/style>/gi, (m, attrs, body) => {
     return `<style${attrs}>${rewriteCss(body, pageUrl, proxyOrigin)}</style>`;
   });
 
-  out = out.replace(/<meta\b([^>]*?)http-equiv=(["']?)\s*refresh\2([^>]*)>/gi, (m) => {
-    const contentMatch = m.match(/\bcontent\s*=\s*(["'])(.*?)\1/i);
+  out = out.replace(/<meta\b([^>]*?)http-equiv=(["']?)refresh\2([^>]*)>/gi, (m, before, q, after) => {
+    const contentMatch = m.match(/\bcontent=(["'])(.*?)\1/i);
     if (!contentMatch) return m;
     const content = contentMatch[2];
     const next = content.replace(/url\s*=\s*([^;]+)$/i, (mm, url) => {
@@ -1204,53 +1179,36 @@ function treeNodeToObject(n) {
     children: n.children ? Object.fromEntries(Object.entries(n.children).map(([k, v]) => [k, treeNodeToObject(v)])) : {},
   };
 }
-function shouldRenderTreeEntry(entry) {
-  if (!entry) return false;
-  if (entry.inline) return entry.kind === "css" || entry.kind === "js";
-  return entry.discoveredFrom === "html" && (entry.kind === "html" || entry.kind === "css" || entry.kind === "js");
-}
 function renderTerminalTree(entries, rootUrl) {
   const siteLabel = siteLabelFromUrl(rootUrl);
   const rootId = stableId(rootUrl);
-
   const items = [];
   const seen = new Set();
-
   for (const entry of entries || []) {
-    if (!shouldRenderTreeEntry(entry)) continue;
-
+    if (!isRenderableTreeEntry(entry)) continue;
     const path = normalizeTreePath(entry?.path || entry?.url || "");
     if (!path || seen.has(path)) continue;
-
     seen.add(path);
     items.push({
       path,
       current: stableId(entry?.url || "") === rootId,
     });
   }
-
   if (!items.length) return `(${siteLabel})\n|`;
-
   items.sort((a, b) => a.path.localeCompare(b.path));
-
   const tree = { files: [], folders: new Map() };
-
   for (const item of items) {
     const p = item.path;
-
     if (p === "index.html") {
       tree.files.push({ name: "index.html", current: item.current });
       continue;
     }
-
     const body = p.startsWith("/") ? p.slice(1) : p;
     const parts = body.split("/").filter(Boolean);
-
     if (parts.length <= 1) {
       tree.files.push({ name: parts[0] || body, current: item.current });
       continue;
     }
-
     let node = tree;
     for (const folderName of parts.slice(0, -1)) {
       if (!node.folders.has(folderName)) {
@@ -1258,40 +1216,30 @@ function renderTerminalTree(entries, rootUrl) {
       }
       node = node.folders.get(folderName);
     }
-
     node.files.push({ name: parts[parts.length - 1], current: item.current });
   }
-
   const lines = [`(${siteLabel})`];
-
   const rootFiles = tree.files
     .filter((f) => f.name === "index.html")
     .concat(tree.files.filter((f) => f.name !== "index.html").sort((a, b) => a.name.localeCompare(b.name)));
-
   for (const file of rootFiles) {
     lines.push(`|---${file.name}${file.current ? " [CURRENT]" : ""}`);
     lines.push("|");
   }
-
   function renderFolder(node, depth) {
     const folders = [...node.folders.entries()].sort(([a], [b]) => a.localeCompare(b));
-
     for (const [folderName, child] of folders) {
       const pad = "|   ".repeat(depth);
       lines.push(`${pad}|---/${folderName}`);
-
       const files = child.files.slice().sort((a, b) => a.name.localeCompare(b.name));
       for (const file of files) {
         lines.push(`${pad}|   |---/${file.name}${file.current ? " [CURRENT]" : ""}`);
       }
-
       renderFolder(child, depth + 1);
       lines.push("|");
     }
   }
-
   renderFolder(tree, 0);
-
   if (lines[lines.length - 1] !== "|") lines.push("|");
   return lines.join("\n");
 }
