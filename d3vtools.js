@@ -347,7 +347,9 @@ async function crawlSite(target, opts = {}) {
     visited.add(normalized);
 
     const res = await fetchText(normalized, textLimitForUrl(normalized), rootOrigin);
-    const type = classifyContentType(res.contentType, normalized);
+    const type = job.kind === "html"
+  ? classifyContentType(res.contentType, normalized)
+  : { kind: job.kind, type: job.kind };
     const path = pathFromUrl(normalized, rootOrigin);
 
     const entry = {
@@ -416,8 +418,7 @@ if (type.kind === "html") {
       queue.push({ url: next, depth: job.depth + 1, kind: "js", referrer: normalized });
     }
   }
-}
-     else if (type.kind === "css") {
+    } else if (type.kind === "css") {
       assets += 1;
       entry.pretty = formatCss(entry.content);
       const extracted = extractFromCss(entry.content, entry.finalUrl, rootOrigin);
@@ -703,29 +704,42 @@ function rewriteHtmlUrls(html, pageUrl, proxyOrigin) {
   ];
 
   for (const attr of attrMap) {
-    const re = new RegExp(`\\b${escapeRegExp(attr)}=(["'])(.*?)\\1`, "gi");
-    out = out.replace(re, (m, q, value) => {
-      const next = proxifyUrl(value, pageUrl, proxyOrigin);
-      return next ? `${attr}=${q}${escapeHtmlAttr(next)}${q}` : m;
+    const re = new RegExp(
+      `\\b${escapeRegExp(attr)}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`,
+      "gi"
+    );
+
+    out = out.replace(re, (m, dq, sq, uq) => {
+      const raw = dq ?? sq ?? uq ?? "";
+      const next = proxifyUrl(raw, pageUrl, proxyOrigin);
+      if (!next) return m;
+      const quote = dq !== undefined ? '"' : sq !== undefined ? "'" : '"';
+      return `${attr}=${quote}${escapeHtmlAttr(next)}${quote}`;
     });
   }
 
-  out = out.replace(/\bsrcset=(["'])(.*?)\1/gi, (m, q, value) => {
-    const next = rewriteSrcset(value, pageUrl, proxyOrigin);
-    return next ? `srcset=${q}${escapeHtmlAttr(next)}${q}` : m;
+  out = out.replace(/\bsrcset\s*=\s*(?:"([^"]*)"|'([^']*)'|([^>\s]+))/gi, (m, dq, sq, uq) => {
+    const raw = dq ?? sq ?? uq ?? "";
+    const next = rewriteSrcset(raw, pageUrl, proxyOrigin);
+    if (!next) return m;
+    const quote = dq !== undefined ? '"' : sq !== undefined ? "'" : '"';
+    return `srcset=${quote}${escapeHtmlAttr(next)}${quote}`;
   });
 
-  out = out.replace(/\bstyle=(["'])(.*?)\1/gi, (m, q, value) => {
-    const next = rewriteCss(value, pageUrl, proxyOrigin);
-    return next ? `style=${q}${escapeHtmlAttr(next)}${q}` : m;
+  out = out.replace(/\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)'|([^>\s]+))/gi, (m, dq, sq, uq) => {
+    const raw = dq ?? sq ?? uq ?? "";
+    const next = rewriteCss(raw, pageUrl, proxyOrigin);
+    if (!next) return m;
+    const quote = dq !== undefined ? '"' : sq !== undefined ? "'" : '"';
+    return `style=${quote}${escapeHtmlAttr(next)}${quote}`;
   });
 
   out = out.replace(/<style\b([^>]*)>([\s\S]*?)<\/style>/gi, (m, attrs, body) => {
     return `<style${attrs}>${rewriteCss(body, pageUrl, proxyOrigin)}</style>`;
   });
 
-  out = out.replace(/<meta\b([^>]*?)http-equiv=(["']?)refresh\2([^>]*)>/gi, (m, before, q, after) => {
-    const contentMatch = m.match(/\bcontent=(["'])(.*?)\1/i);
+  out = out.replace(/<meta\b([^>]*?)http-equiv=(["']?)\s*refresh\2([^>]*)>/gi, (m) => {
+    const contentMatch = m.match(/\bcontent\s*=\s*(["'])(.*?)\1/i);
     if (!contentMatch) return m;
     const content = contentMatch[2];
     const next = content.replace(/url\s*=\s*([^;]+)$/i, (mm, url) => {
@@ -1189,37 +1203,54 @@ function treeNodeToObject(n) {
     entry: n.entry ? { id: n.entry.id, url: n.entry.url, path: n.entry.path, kind: n.entry.kind } : null,
     children: n.children ? Object.fromEntries(Object.entries(n.children).map(([k, v]) => [k, treeNodeToObject(v)])) : {},
   };
-    }
+}
+function shouldRenderTreeEntry(entry) {
+  if (!entry) return false;
+  if (entry.inline) return entry.kind === "css" || entry.kind === "js";
+  return entry.discoveredFrom === "html" && (entry.kind === "html" || entry.kind === "css" || entry.kind === "js");
+}
 function renderTerminalTree(entries, rootUrl) {
   const siteLabel = siteLabelFromUrl(rootUrl);
   const rootId = stableId(rootUrl);
+
   const items = [];
   const seen = new Set();
+
   for (const entry of entries || []) {
-    if (!isRenderableTreeEntry(entry)) continue;
+    if (!shouldRenderTreeEntry(entry)) continue;
+
     const path = normalizeTreePath(entry?.path || entry?.url || "");
     if (!path || seen.has(path)) continue;
+
     seen.add(path);
     items.push({
       path,
       current: stableId(entry?.url || "") === rootId,
     });
   }
+
   if (!items.length) return `(${siteLabel})\n|`;
+
   items.sort((a, b) => a.path.localeCompare(b.path));
+
   const tree = { files: [], folders: new Map() };
+
   for (const item of items) {
-    let p = item.path;
+    const p = item.path;
+
     if (p === "index.html") {
       tree.files.push({ name: "index.html", current: item.current });
       continue;
     }
+
     const body = p.startsWith("/") ? p.slice(1) : p;
     const parts = body.split("/").filter(Boolean);
+
     if (parts.length <= 1) {
       tree.files.push({ name: parts[0] || body, current: item.current });
       continue;
     }
+
     let node = tree;
     for (const folderName of parts.slice(0, -1)) {
       if (!node.folders.has(folderName)) {
@@ -1227,15 +1258,21 @@ function renderTerminalTree(entries, rootUrl) {
       }
       node = node.folders.get(folderName);
     }
+
     node.files.push({ name: parts[parts.length - 1], current: item.current });
   }
+
   const lines = [`(${siteLabel})`];
-  const rootFiles = tree.files.filter((f) => f.name === "index.html")
+
+  const rootFiles = tree.files
+    .filter((f) => f.name === "index.html")
     .concat(tree.files.filter((f) => f.name !== "index.html").sort((a, b) => a.name.localeCompare(b.name)));
+
   for (const file of rootFiles) {
     lines.push(`|---${file.name}${file.current ? " [CURRENT]" : ""}`);
     lines.push("|");
   }
+
   function renderFolder(node, depth) {
     const folders = [...node.folders.entries()].sort(([a], [b]) => a.localeCompare(b));
 
