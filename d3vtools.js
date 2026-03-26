@@ -730,6 +730,9 @@ function escapeHtml(value) {
 function escapeHtmlAttr(value) {
   return escapeHtml(value).replace(/`/g, "&#96;");
 }
+function escapeRegExp(value) {
+  return String(value ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 function decodePathSegment(segment) {
   try {
     return decodeURIComponent(segment);
