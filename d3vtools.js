@@ -362,7 +362,7 @@ async function crawlSite(target, opts = {}) {
       entry.pretty = formatJs(entry.content);
       const extracted = extractFromJs(entry.content, entry.finalUrl, rootOrigin);
       entry.assets = extracted.assets;
-    } else if (type.kind === "text") { else if (type.kind === "text") {
+    } else if (type.kind === "text") {
       textFiles += 1;
       entry.textContent = cleanText(entry.content);
     } else {
